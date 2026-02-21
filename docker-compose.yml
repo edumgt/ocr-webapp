@@ -6,6 +6,7 @@ services:
       context: ./ocr-service
     container_name: ocr-service
     restart: unless-stopped
+    entrypoint: []        # ✅ 베이스 ENTRYPOINT 제거 (핵심)
     expose:
       - "8001"
 

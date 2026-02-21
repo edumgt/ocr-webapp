@@ -2,6 +2,8 @@
 
 이 저장소는 아래 3개 컨테이너를 Docker Compose로 묶어, **WSL2 리눅스 환경에서 바로 실행 가능한 OCR 웹 서비스**를 제공합니다.
 
+![alt text](image-1.png)
+
 - **ocr-service**: Tesseract OCR 엔진 컨테이너 (`jitesoft/tesseract-ocr`) + FastAPI 래퍼
 - **backend**: 업로드 파일을 OCR 서비스로 전달하는 FastAPI API Gateway
 - **frontend**: 바닐라 JavaScript 업로드 UI (Nginx 정적 서버)
@@ -82,6 +84,13 @@ docker compose up --build -d
 
 # 3) 상태 확인
 docker compose ps
+```
+
+---
+```
+root@DESKTOP-D6A344Q:/home/Docker-compose-Tesseract-OCR# docker exec -it ocr-service sh -lc "ls -al /usr/local/share/tessdata | egrep 'kor|eng' || true"
+-rw-r--r-- 1 tesseract tesseract  4113088 Feb 19 04:19 eng.traineddata
+-rw-r--r-- 1 root      root      15317715 Feb 21 12:59 kor.traineddata
 ```
 
 ### 3-3. 접속 URL
