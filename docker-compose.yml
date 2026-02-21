@@ -1,55 +1,30 @@
 version: "3.9"
 
 services:
-  gitlab:
-    image: gitlab/gitlab-ce:latest
-    container_name: gitlab
-    hostname: gitlab
-    restart: unless-stopped
-    shm_size: "256m"
-    environment:
-      GITLAB_OMNIBUS_CONFIG: |
-        external_url 'http://localhost:8088'
-        nginx['listen_port'] = 80
-        nginx['listen_https'] = false
-        nginx['redirect_http_to_https'] = false
-        # 혹시 https 관련 설정이 남아있을 때 대비
-        letsencrypt['enable'] = false
-    ports:
-      - "8088:80"
-      - "2222:22"
-    volumes:
-      - gitlab_config:/etc/gitlab
-      - gitlab_logs:/var/log/gitlab
-      - gitlab_data:/var/opt/gitlab
-    networks:
-      - cicd
-
-  jenkins:
+  ocr-service:
     build:
-      context: ./jenkins
-      dockerfile: Dockerfile
-    image: jenkins-docker:local
-    container_name: jenkins
+      context: ./ocr-service
+    container_name: ocr-service
     restart: unless-stopped
-    user: root
+    expose:
+      - "8001"
+
+  backend:
+    build:
+      context: ./backend
+    container_name: ocr-backend
+    restart: unless-stopped
     ports:
-      - "8080:8080"
-      - "50000:50000"
-    volumes:
-      - jenkins_home:/var/jenkins_home
-      - /var/run/docker.sock:/var/run/docker.sock
-    networks:
-      - cicd
+      - "8000:8000"
     depends_on:
-      - gitlab
+      - ocr-service
 
-networks:
-  cicd:
-    driver: bridge
-
-volumes:
-  gitlab_config:
-  gitlab_logs:
-  gitlab_data:
-  jenkins_home:
+  frontend:
+    build:
+      context: ./frontend
+    container_name: ocr-frontend
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
