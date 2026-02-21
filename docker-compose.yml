@@ -6,7 +6,7 @@ services:
       context: ./ocr-service
     container_name: ocr-service
     restart: unless-stopped
-    entrypoint: []        # ✅ 베이스 ENTRYPOINT 제거 (핵심)
+    entrypoint: []
     expose:
       - "8001"
 
@@ -29,3 +29,19 @@ services:
       - "5173:80"
     depends_on:
       - backend
+
+  docker-sample:
+    build:
+      context: ./docker-sample
+    container_name: docker-sample-nginx
+    restart: unless-stopped
+    ports:
+      - "8090:80"
+
+  example-api:
+    build:
+      context: ./example
+    container_name: example-fastapi
+    restart: unless-stopped
+    ports:
+      - "8002:8002"
