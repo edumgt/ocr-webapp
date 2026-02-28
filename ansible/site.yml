@@ -1,0 +1,86 @@
+---
+- name: WSL Docker 기반 OCR + GitLab + Jenkins 일괄 구성
+  hosts: local
+  gather_facts: true
+
+  pre_tasks:
+    - name: Ensure apt cache is up to date
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+      become: true
+
+    - name: Install required system packages
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - curl
+          - git
+          - gnupg
+          - python3-pip
+        state: present
+      become: true
+
+    - name: Check docker command
+      ansible.builtin.command: docker --version
+      register: docker_check
+      failed_when: false
+      changed_when: false
+
+    - name: Install docker CLI when missing
+      ansible.builtin.shell: |
+        set -euo pipefail
+        curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
+        sh /tmp/get-docker.sh
+      args:
+        executable: /bin/bash
+      when: docker_check.rc != 0
+      become: true
+
+  tasks:
+    - name: Render CI/CD environment file
+      ansible.builtin.template:
+        src: templates/cicd.env.j2
+        dest: "{{ project_root }}/.env.cicd"
+        mode: "0600"
+
+    - name: Build and start OCR core stack
+      ansible.builtin.command:
+        argv:
+          - docker
+          - compose
+          - -f
+          - "{{ item }}"
+          - up
+          - --build
+          - -d
+      args:
+        chdir: "{{ project_root }}"
+      loop: "{{ compose_core_files }}"
+
+    - name: Build and start GitLab + Jenkins stack
+      ansible.builtin.command:
+        argv:
+          - docker
+          - compose
+          - --env-file
+          - .env.cicd
+          - -f
+          - "{{ item }}"
+          - up
+          - --build
+          - -d
+      args:
+        chdir: "{{ project_root }}"
+      loop: "{{ compose_cicd_files }}"
+
+    - name: Show running containers
+      ansible.builtin.command: docker compose ps
+      args:
+        chdir: "{{ project_root }}"
+      register: compose_ps
+      changed_when: false
+
+    - name: Print compose status
+      ansible.builtin.debug:
+        var: compose_ps.stdout_lines

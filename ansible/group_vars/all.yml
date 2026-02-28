@@ -1,0 +1,8 @@
+project_root: "/workspace/Docker-compose-Tesseract-OCR"
+compose_core_files:
+  - docker-compose.yml
+compose_cicd_files:
+  - docker-compose.cicd.yml
+jenkins_admin_id: admin
+jenkins_admin_password: admin1234
+gitlab_external_url: http://localhost:8088

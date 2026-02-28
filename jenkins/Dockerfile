@@ -18,4 +18,7 @@ RUN curl -fsSL https://get.docker.com -o /tmp/get-docker.sh \
 # Jenkins도 docker 그룹 사용 가능하게(권장)
 RUN groupadd -f docker && usermod -aG docker jenkins
 
+COPY plugins.txt /usr/share/jenkins/ref/plugins.txt
+RUN jenkins-plugin-cli --plugin-file /usr/share/jenkins/ref/plugins.txt
+
 USER jenkins
