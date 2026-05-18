@@ -15,6 +15,9 @@ function normalizeBackendUrl(rawValue) {
 }
 
 function formatFileSize(bytes) {
+  if (bytes >= 1024 * 1024) {
+    return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+  }
   return `${(bytes / 1024).toFixed(1)}KB`;
 }
 
@@ -53,7 +56,7 @@ form.addEventListener('submit', async (event) => {
     });
 
     const payload = await res.json().catch(() => {
-      throw new Error('응답 형식(JSON) 파싱에 실패했습니다.');
+      throw new Error(`응답 형식(JSON) 파싱에 실패했습니다. (status: ${res.status})`);
     });
 
     if (!res.ok) {
