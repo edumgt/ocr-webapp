@@ -22,7 +22,7 @@ Browser (5173) -> Backend /api/ocr (8000) -> OCR Service /ocr (8001) -> Tesserac
 실행:
 
 ```bash
-cd /home/runner/work/ocr-webapp/ocr-webapp
+cd <project-directory>
 docker compose up --build -d
 ```
 
@@ -71,6 +71,7 @@ docker compose down
 - `GET /health`
 - `POST /ocr?lang=kor+eng`
   - `lang` 패턴: `xxx` 또는 `xxx+yyy`
+  - 지원 언어: `kor`, `eng` (조합 가능: `kor+eng`)
   - OCR 타임아웃: 30초
 
 ## 5. 디렉터리 요약

@@ -62,8 +62,9 @@ async def run_ocr(
         try:
             payload = resp.json()
             if isinstance(payload, Mapping):
-                parsed = payload.get("detail", payload)
-                detail = str(parsed)
+                parsed = payload.get("detail")
+                if parsed is not None:
+                    detail = str(parsed)
         except ValueError:
             pass
         raise HTTPException(status_code=resp.status_code, detail=detail)

@@ -3,10 +3,8 @@ const backendUrlInput = document.getElementById('backend-url-input');
 const fileInput = document.getElementById('file-input');
 const langInput = document.getElementById('lang-input');
 const fileMetaEl = document.getElementById('file-meta');
-const previewImageEl = document.getElementById('preview-image');
 const copyButton = document.getElementById('copy-btn');
 const resultEl = document.getElementById('result');
-let previewObjectUrl = '';
 
 function normalizeBackendUrl(rawValue) {
   const value = (rawValue || '').trim();
@@ -17,21 +15,12 @@ function normalizeBackendUrl(rawValue) {
 }
 
 function setPreview(file) {
-  if (previewObjectUrl) {
-    URL.revokeObjectURL(previewObjectUrl);
-    previewObjectUrl = '';
-  }
-
   if (!file) {
-    previewImageEl.hidden = true;
     fileMetaEl.textContent = '선택된 파일이 없습니다.';
     return;
   }
 
   fileMetaEl.textContent = `파일명: ${file.name} / 크기: ${(file.size / 1024).toFixed(1)}KB / 타입: ${file.type || 'unknown'}`;
-  previewObjectUrl = URL.createObjectURL(file);
-  previewImageEl.src = previewObjectUrl;
-  previewImageEl.hidden = false;
 }
 
 fileInput.addEventListener('change', () => {
