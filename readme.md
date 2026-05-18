@@ -1,188 +1,59 @@
-# Docker Compose Tesseract OCR + GitLab + Jenkins (WSL2 통합 가이드)
+# OCR Web App
 
-이 저장소는 **WSL2 + Docker Desktop** 환경에서 아래 서비스를 한 번에 운영할 수 있도록 구성되어 있습니다.
+FastAPI + Tesseract + Nginx 기반의 OCR 웹 애플리케이션입니다.  
+이미지를 업로드하면 OCR 결과 텍스트를 웹에서 바로 확인할 수 있습니다.
 
-- OCR Runtime: `ocr-service`, `backend`, `frontend(nginx)`
-- CI/CD: `gitlab`, `jenkins`
-- 자동화: `Ansible playbook` 기반 일괄 설치/기동
+## 1. 구성
 
----
-
-## 1) 전체 아키텍처
+- `frontend` (Nginx, port `5173`): 업로드 UI
+- `backend` (FastAPI, port `8000`): 업로드 파일 검증 및 OCR 서비스 게이트웨이
+- `ocr-service` (FastAPI + Tesseract, internal `8001`): 실제 OCR 실행
 
 ```text
-┌────────────────────────────── User/Developer PC (Windows + WSL2) ──────────────────────────────┐
-│                                                                                                   │
-│  Browser                                                                                          │
-│   ├─ http://localhost:5173  → Frontend (Nginx, Vanilla JS)                                       │
-│   ├─ http://localhost:8088  → GitLab CE                                                          │
-│   └─ http://localhost:8080  → Jenkins                                                            │
-│                                                                                                   │
-│  Frontend (5173)                                                                                  │
-│      └─ POST /api/ocr                                                                            │
-│          → Backend FastAPI (8000)                                                                 │
-│              └─ POST /ocr?lang=kor+eng                                                            │
-│                  → OCR FastAPI wrapper (8001, internal)                                            │
-│                      └─ Tesseract CLI 실행                                                         │
-│                                                                                                   │
-│  GitLab (8088/2222)                                                                               │
-│      └─ Webhook / SCM                                                                             │
-│          → Jenkins Pipeline (8080/50000)                                                          │
-│              └─ docker.sock 사용해 이미지 빌드/배포                                                │
-│                                                                                                   │
-└───────────────────────────────────────────────────────────────────────────────────────────────────┘
+Browser (5173) -> Backend /api/ocr (8000) -> OCR Service /ocr (8001) -> Tesseract
 ```
 
----
+## 2. 빠른 시작
 
-## 2) 서비스 구성 파일
+사전 준비:
+- Docker
+- Docker Compose
 
-- OCR 서비스 스택: `docker-compose.yml`
-- CI/CD 스택: `docker-compose.cicd.yml`
-- Jenkins 이미지 빌드 정의: `jenkins/Dockerfile`
-- Jenkins 초기 관리자 자동 생성: `jenkins/init.groovy.d/01-admin.groovy`
-- Jenkins 플러그인 목록: `jenkins/plugins.txt`
-- Ansible 자동화: `ansible/site.yml`
-
----
-
-## 3) WSL2 + Docker 사전 준비
-
-1. Windows에 Docker Desktop 설치
-2. Docker Desktop 설정에서 **Use WSL 2 based engine** 활성화
-3. Docker Desktop > Resources > WSL Integration 에서 사용 배포판(예: Ubuntu) 활성화
-
-확인:
+실행:
 
 ```bash
-docker --version
-docker compose version
-ansible --version
-```
-
----
-
-## 4) 수동 실행 방법 (docker compose)
-
-### 4-1. OCR 스택 실행
-
-```bash
-cd /workspace/Docker-compose-Tesseract-OCR
-docker compose -f docker-compose.yml up --build -d
-docker compose -f docker-compose.yml ps
+cd /home/runner/work/ocr-webapp/ocr-webapp
+docker compose up --build -d
 ```
 
 접속:
-- Frontend: http://localhost:5173
+- Web App: http://localhost:5173
 - Backend docs: http://localhost:8000/docs
+- Backend health: http://localhost:8000/health
 
-### 4-2. GitLab + Jenkins 실행
-
-```bash
-cd /workspace/Docker-compose-Tesseract-OCR
-cp -n .env.cicd.example .env.cicd 2>/dev/null || true
-# .env.cicd가 없으면 아래 값으로 직접 생성
-# JENKINS_ADMIN_ID=admin
-# JENKINS_ADMIN_PASSWORD=admin1234
-# GITLAB_EXTERNAL_URL=http://localhost:8088
-
-docker compose --env-file .env.cicd -f docker-compose.cicd.yml up --build -d
-docker compose -f docker-compose.cicd.yml ps
-```
-
-접속:
-- GitLab: http://localhost:8088
-- Jenkins: http://localhost:8080
-
-> GitLab 초기 root 비밀번호 확인:
+중지:
 
 ```bash
-docker exec -it gitlab bash -lc "cat /etc/gitlab/initial_root_password"
+docker compose down
 ```
 
----
+## 3. 웹 사용법
 
-## 5) Ansible Playbook 기반 일괄 셋팅
+1. `Backend URL` 확인 (기본값: `http://localhost:8000`)
+2. 이미지 파일 업로드 (`image/*`)
+3. OCR 언어 입력 (기본값: `kor+eng`)
+4. `OCR 실행` 클릭
+5. 결과 텍스트 확인 후 `결과 복사` 가능
 
-다음 1회 명령으로 패키지 준비 + `.env.cicd` 렌더링 + OCR/CI 스택 기동까지 수행합니다.
+## 4. API
 
-```bash
-cd /workspace/Docker-compose-Tesseract-OCR
-ansible-playbook -i ansible/inventory.ini ansible/site.yml
-```
+### Backend
 
-주요 변수 파일:
-- `ansible/group_vars/all.yml`
-  - `project_root`
-  - `jenkins_admin_id`
-  - `jenkins_admin_password`
-  - `gitlab_external_url`
-
-실행 시 생성 파일:
-- `.env.cicd` (민감정보 포함 가능, 기본 권한 0600)
-
----
-
-## 6) GitLab 운영/사용 가이드
-
-### 6-1. 최초 로그인
-1. `root` 계정으로 로그인
-2. 초기 비밀번호는 컨테이너 내부 파일에서 조회
-3. 로그인 후 즉시 비밀번호 변경 권장
-
-### 6-2. 프로젝트 생성 및 Push
-1. 새 프로젝트 생성 (`docker-sample` 예제로 사용 가능)
-2. WSL 터미널에서 remote 등록 후 push
-
-```bash
-cd /workspace/Docker-compose-Tesseract-OCR/docker-sample
-git init
-git remote add origin http://localhost:8088/<group>/<project>.git
-git add .
-git commit -m "init"
-git push -u origin main
-```
-
-### 6-3. Webhook 설정
-- GitLab Project > Settings > Webhooks
-- Jenkins용 URL 등록(예: Generic webhook trigger 또는 GitLab plugin endpoint)
-- Push events 활성화
-
----
-
-## 7) Jenkins 운영/사용 가이드
-
-### 7-1. 최초 로그인
-- URL: http://localhost:8080
-- 기본 관리자 계정은 `.env.cicd` 또는 compose 환경변수 기준
-  - ID: `JENKINS_ADMIN_ID`
-  - PW: `JENKINS_ADMIN_PASSWORD`
-
-### 7-2. 권장 플러그인
-`jenkins/plugins.txt`에 정의된 플러그인이 이미지 빌드 시 자동 설치됩니다.
-- pipeline, git, gitlab-plugin, docker-workflow 등
-
-### 7-3. GitLab 연동 파이프라인
-1. Jenkins에서 Pipeline job 생성
-2. SCM을 GitLab repo로 지정
-3. 저장소의 `Jenkinsfile` 사용
-4. Credential(사용자/토큰) 등록
-5. Webhook 트리거와 연동
-
-예제 Jenkinsfile은 `docker-sample/Jenkinsfile` 참고:
-- checkout
-- docker build
-- container run
-- smoke test
-
----
-
-## 8) OCR API 사용법
-
-### Backend API
 - `GET /health`
 - `POST /api/ocr?lang=kor+eng`
   - form-data: `file`
+  - 파일 크기 제한: 10MB
+  - 지원 타입: `image/*`
 
 응답 예시:
 
@@ -190,40 +61,36 @@ git push -u origin main
 {
   "text": "인식된 텍스트",
   "lang": "kor+eng",
-  "filename": "sample.png"
+  "filename": "sample.png",
+  "size_bytes": 31245
 }
 ```
 
----
+### OCR Service
 
-## 9) 트러블슈팅
+- `GET /health`
+- `POST /ocr?lang=kor+eng`
+  - `lang` 패턴: `xxx` 또는 `xxx+yyy`
+  - OCR 타임아웃: 30초
 
-### GitLab 접속/인증 이슈
-- HTTP 환경에서 Git credential 관련 정책에 막히는 경우 `gitlab_config.md` 참고
+## 5. 디렉터리 요약
 
-### Jenkins가 Docker 명령 실패
-- `jenkins` 컨테이너에 `/var/run/docker.sock` 마운트 여부 확인
-- Jenkins 컨테이너 내부에서 `docker --version` 확인
+- `frontend/`: OCR 웹 UI 정적 파일
+- `backend/`: OCR API 게이트웨이
+- `ocr-service/`: Tesseract 실행 서비스
+- `docker-compose.yml`: OCR 앱 실행 스택
 
-### OCR 연결 실패 (502 등)
-- `docker compose -f docker-compose.yml logs -f backend`
-- `docker compose -f docker-compose.yml logs -f ocr-service`
+아래 경로는 OCR 앱 핵심 기능과는 분리된 부가 자료입니다.
+- `docker-compose.cicd.yml`, `jenkins/`, `ansible/`, `docker-sample/`, `example/`, `yaml_bkp/`
 
----
+## 6. 트러블슈팅
 
-## 10) 주요 명령어 모음
-
-```bash
-# 전체 상태 확인
-cd /workspace/Docker-compose-Tesseract-OCR
-docker compose -f docker-compose.yml ps
-docker compose -f docker-compose.cicd.yml ps
-
-# 로그 확인
-docker compose -f docker-compose.yml logs -f backend
-docker compose -f docker-compose.cicd.yml logs -f jenkins
-
-# 종료
-docker compose -f docker-compose.yml down
-docker compose -f docker-compose.cicd.yml down
-```
+- OCR API 오류 시:
+  ```bash
+  docker compose logs -f backend
+  docker compose logs -f ocr-service
+  ```
+- 프론트 접속 오류 시:
+  ```bash
+  docker compose logs -f frontend
+  ```

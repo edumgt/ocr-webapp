@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
 
 OCR_SERVICE_URL = "http://ocr-service:8001/ocr"
 TIMEOUT_SECONDS = 60.0
+MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024
+ALLOWED_CONTENT_TYPE_PREFIXES = ("image/",)
 
 app = FastAPI(
     title="OCR Gateway API",
@@ -31,12 +35,21 @@ def health() -> dict[str, bool]:
 async def run_ocr(
     file: UploadFile = File(...),
     lang: str = Query("kor+eng", description="Tesseract language code (ex: kor+eng)"),
-) -> dict[str, str]:
+) -> dict[str, str | int]:
     content = await file.read()
     if not content:
         raise HTTPException(status_code=400, detail="업로드된 파일이 비어 있습니다.")
+    if len(content) > MAX_UPLOAD_SIZE_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"업로드 파일은 {MAX_UPLOAD_SIZE_BYTES // (1024 * 1024)}MB 이하여야 합니다.",
+        )
 
-    files = {"file": (file.filename or "upload.png", content, file.content_type or "application/octet-stream")}
+    content_type = file.content_type or "application/octet-stream"
+    if not any(content_type.startswith(prefix) for prefix in ALLOWED_CONTENT_TYPE_PREFIXES):
+        raise HTTPException(status_code=400, detail=f"지원하지 않는 파일 형식입니다: {content_type}")
+
+    files = {"file": (file.filename or "upload.png", content, content_type)}
 
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
@@ -45,8 +58,17 @@ async def run_ocr(
         raise HTTPException(status_code=502, detail=f"OCR 서비스 연결 실패: {exc}") from exc
 
     if resp.status_code >= 400:
-        raise HTTPException(status_code=resp.status_code, detail=resp.text)
+        detail: str = resp.text
+        try:
+            payload = resp.json()
+            if isinstance(payload, Mapping):
+                parsed = payload.get("detail", payload)
+                detail = str(parsed)
+        except ValueError:
+            pass
+        raise HTTPException(status_code=resp.status_code, detail=detail)
 
     payload = resp.json()
     payload.setdefault("filename", file.filename or "upload")
+    payload.setdefault("size_bytes", len(content))
     return payload
