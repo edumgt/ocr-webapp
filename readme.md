@@ -71,7 +71,7 @@ docker compose down
 - `GET /health`
 - `POST /ocr?lang=kor+eng`
   - `lang` 패턴: `xxx` 또는 `xxx+yyy`
-  - 지원 언어: `kor`, `eng` (조합 가능: `kor+eng`)
+  - 지원 언어: `kor`, `eng`, `kor+eng`, `eng+kor`
   - OCR 타임아웃: 30초
 
 ## 5. 디렉터리 요약

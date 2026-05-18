@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Mapping
 
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
@@ -10,6 +11,7 @@ OCR_SERVICE_URL = "http://ocr-service:8001/ocr"
 TIMEOUT_SECONDS = 60.0
 MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024
 ALLOWED_CONTENT_TYPE_PREFIXES = ("image/",)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="OCR Gateway API",
@@ -62,11 +64,11 @@ async def run_ocr(
         try:
             payload = resp.json()
             if isinstance(payload, Mapping):
-                parsed = payload.get("detail")
-                if parsed is not None:
-                    detail = str(parsed)
-        except ValueError:
-            pass
+                detail_value = payload.get("detail")
+                if detail_value is not None:
+                    detail = str(detail_value)
+        except ValueError as exc:
+            logger.warning("OCR 서비스 오류 응답 JSON 파싱 실패: %s", exc)
         raise HTTPException(status_code=resp.status_code, detail=detail)
 
     payload = resp.json()

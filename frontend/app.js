@@ -14,13 +14,17 @@ function normalizeBackendUrl(rawValue) {
   return value.replace(/\/+$/, '');
 }
 
+function formatFileSize(bytes) {
+  return `${(bytes / 1024).toFixed(1)}KB`;
+}
+
 function setPreview(file) {
   if (!file) {
     fileMetaEl.textContent = '선택된 파일이 없습니다.';
     return;
   }
 
-  fileMetaEl.textContent = `파일명: ${file.name} / 크기: ${(file.size / 1024).toFixed(1)}KB / 타입: ${file.type || 'unknown'}`;
+  fileMetaEl.textContent = `파일명: ${file.name} / 크기: ${formatFileSize(file.size)} / 타입: ${file.type || 'unknown'}`;
 }
 
 fileInput.addEventListener('change', () => {
@@ -48,7 +52,9 @@ form.addEventListener('submit', async (event) => {
       body: formData,
     });
 
-    const payload = await res.json().catch(() => ({}));
+    const payload = await res.json().catch(() => {
+      throw new Error('응답 형식(JSON) 파싱에 실패했습니다.');
+    });
 
     if (!res.ok) {
       throw new Error(payload.detail || '요청 실패');
