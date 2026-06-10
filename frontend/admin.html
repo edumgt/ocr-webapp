@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>관리자 대시보드 - OCR</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+  <script src="https://cdn.jsdelivr.net/npm/apexcharts@3.49.1/dist/apexcharts.min.js"></script>
+</head>
+<body>
+
+  <!-- ── 오버레이 ── -->
+  <div id="overlay" class="overlay"></div>
+
+  <!-- ── 사용법 오프캔버스 ── -->
+  <aside id="oc-help" class="offcanvas" aria-label="사용법 안내">
+    <div class="oc-header">
+      <span class="oc-title">사용법 안내</span>
+      <button class="oc-close" id="oc-help-close"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="oc-body">
+      <div class="oc-section">
+        <span class="oc-label">대시보드 지표 설명</span>
+        <div class="help-step">
+          <div class="step-num" style="background:#7B61FF"><i class="fa-solid fa-microchip"></i></div>
+          <div class="step-text">
+            <strong>CPU 사용률</strong>
+            <p>서버 전체 CPU 점유율(%). 2초 간격으로 갱신됩니다.</p>
+          </div>
+        </div>
+        <div class="help-step">
+          <div class="step-num" style="background:#2196F3"><i class="fa-solid fa-server"></i></div>
+          <div class="step-text">
+            <strong>메모리 사용량</strong>
+            <p>현재 사용 중인 RAM(MB). OCR 컨테이너가 많을수록 증가합니다.</p>
+          </div>
+        </div>
+        <div class="help-step">
+          <div class="step-num" style="background:#00BCD4"><i class="fa-brands fa-docker"></i></div>
+          <div class="step-text">
+            <strong>동시 OCR 컨테이너</strong>
+            <p>현재 처리 중인 on-demand 컨테이너 수. 요청 후 자동 소멸됩니다.</p>
+          </div>
+        </div>
+        <div class="help-step">
+          <div class="step-num" style="background:#F59E0B"><i class="fa-solid fa-paper-plane"></i></div>
+          <div class="step-text">
+            <strong>요청 처리량</strong>
+            <p>2초 윈도우 기준 처리된 OCR 요청 수. 부하 추이를 확인합니다.</p>
+          </div>
+        </div>
+      </div>
+      <hr class="oc-divider" />
+      <div class="oc-section">
+        <span class="oc-label">갱신 주기</span>
+        <p class="oc-hint">모든 차트는 <strong>2초</strong>마다 자동 갱신됩니다. 실시간 추이를 확인하려면 부하 테스트를 실행하세요.</p>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ── GNB ── -->
+  <header class="site-header">
+    <div class="header-inner">
+      <a href="./index.html" class="brand">
+        <span class="brand-box">OCR</span>
+        <span class="brand-name">텍스트 추출기</span>
+      </a>
+      <nav class="gnb-tabs">
+        <a href="./index.html" class="gnb-tab">사용자</a>
+        <a href="./admin.html" class="gnb-tab active">관리자</a>
+      </nav>
+      <div class="gnb-actions">
+        <button class="gnb-btn" id="btn-help">
+          <i class="fa-regular fa-circle-question"></i>
+          도움말
+        </button>
+        <span id="refresh-badge" class="gnb-btn" style="cursor:default;border-color:var(--border);">
+          <i class="fa-solid fa-rotate"></i>
+          <span id="refresh-ts">갱신 중...</span>
+        </span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ── 본문 ── -->
+  <main class="main">
+    <div class="page-inner wide">
+
+      <!-- 히어로 -->
+      <section class="hero">
+        <h1 class="hero-title">시스템 관리자 대시보드</h1>
+        <p class="hero-sub">CPU · 메모리 · 동시 접속 · 요청 처리량 실시간 모니터링</p>
+      </section>
+
+      <!-- KPI 카드 -->
+      <div class="kpi-grid">
+        <div class="kpi-card accent">
+          <div class="kpi-label">CPU 사용률</div>
+          <div class="kpi-value" id="kpi-cpu">—</div>
+          <div class="kpi-sub">현재 점유율</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">메모리 사용량</div>
+          <div class="kpi-value" id="kpi-mem">—</div>
+          <div class="kpi-sub" id="kpi-mem-sub">총 메모리 대비</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">누적 요청 수</div>
+          <div class="kpi-value" id="kpi-req">—</div>
+          <div class="kpi-sub" id="kpi-req-sub">성공 / 실패</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">성공률 · 평균 응답</div>
+          <div class="kpi-value" id="kpi-suc">—</div>
+          <div class="kpi-sub" id="kpi-avg">평균 응답시간</div>
+        </div>
+      </div>
+
+      <!-- 차트 그리드 -->
+      <div class="chart-grid">
+        <div class="chart-card">
+          <div class="chart-header">CPU 사용률 추이 (%)</div>
+          <div class="chart-body" id="chart-cpu"></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-header">메모리 사용량 추이 (MB)</div>
+          <div class="chart-body" id="chart-mem"></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-header">동시 OCR 컨테이너 추이</div>
+          <div class="chart-body" id="chart-ocr"></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-header">요청 처리량 추이 (건/2s)</div>
+          <div class="chart-body" id="chart-req"></div>
+        </div>
+      </div>
+
+      <!-- 분포 차트 -->
+      <div class="chart-grid">
+        <div class="chart-card">
+          <div class="chart-header">요청 결과 분포</div>
+          <div class="chart-body" id="chart-dist"></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-header">응답시간 분포 (구간별 건수)</div>
+          <div class="chart-body" id="chart-resp"></div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- ── 푸터 ── -->
+  <footer class="site-footer">
+    <strong>(주)에듀엠지티</strong> &nbsp;|&nbsp;
+    <a href="https://www.edumgt.co.kr" target="_blank" rel="noopener">www.edumgt.co.kr</a>
+    &nbsp;|&nbsp; OCR 텍스트 추출 시스템 &nbsp;|&nbsp; <i class="fa-regular fa-copyright"></i> 2026 에듀엠지티. All rights reserved.
+  </footer>
+
+<script>
+// ── 설정 ─────────────────────────────────────────────────────
+const BACKEND = 'http://localhost:8000';
+const POLL_MS = 2000;
+
+const BLUE = '#0078D4', DARK = '#1A1A1A';
+const C_CPU  = '#7B61FF', C_MEM = '#2196F3', C_OCR = '#00BCD4', C_REQ = '#F59E0B';
+
+// ── 오프캔버스 ────────────────────────────────────────────────
+const overlay = document.getElementById('overlay');
+const ocHelp  = document.getElementById('oc-help');
+document.getElementById('btn-help').addEventListener('click',      () => { ocHelp.classList.add('open'); overlay.classList.add('open'); });
+document.getElementById('oc-help-close').addEventListener('click', () => { ocHelp.classList.remove('open'); overlay.classList.remove('open'); });
+overlay.addEventListener('click', () => { ocHelp.classList.remove('open'); overlay.classList.remove('open'); });
+
+// ── ApexCharts 공통 옵션 ──────────────────────────────────────
+function baseLineOpts(color, yMax) {
+  return {
+    chart: { type: 'area', height: 220, animations: { enabled: true, easing: 'easeinout', speed: 600 },
+             toolbar: { show: false }, sparkline: { enabled: false }, background: '#fff',
+             fontFamily: "'Noto Sans KR', 'Segoe UI', sans-serif" },
+    stroke: { curve: 'smooth', width: 2.5 },
+    fill:   { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.28, opacityTo: 0.01 } },
+    colors: [color],
+    xaxis:  { type: 'datetime', labels: { datetimeUTC: false, style: { fontSize: '11px', colors: '#737373' } },
+              axisBorder: { show: false }, axisTicks: { show: false } },
+    yaxis:  { max: yMax, min: 0, labels: { style: { fontSize: '11px', colors: '#737373' } } },
+    grid:   { borderColor: '#F0F2F5', strokeDashArray: 4, padding: { left: 4, right: 4 } },
+    tooltip:{ x: { format: 'HH:mm:ss' }, style: { fontSize: '13px' } },
+    dataLabels: { enabled: false },
+    series: [{ name: '', data: [] }],
+  };
+}
+
+// ── 차트 초기화 ───────────────────────────────────────────────
+const chartCpu = new ApexCharts(document.getElementById('chart-cpu'),
+  { ...baseLineOpts(C_CPU, 100), series: [{ name: 'CPU %', data: [] }] });
+
+const chartMem = new ApexCharts(document.getElementById('chart-mem'),
+  { ...baseLineOpts(C_MEM, null), series: [{ name: '사용 MB', data: [] }] });
+
+const chartOcr = new ApexCharts(document.getElementById('chart-ocr'), {
+  ...baseLineOpts(C_OCR, null),
+  chart: { ...baseLineOpts(C_OCR, null).chart, type: 'bar' },
+  fill:  { type: 'solid', opacity: 0.85 },
+  plotOptions: { bar: { borderRadius: 3, columnWidth: '60%' } },
+  series: [{ name: 'OCR 컨테이너', data: [] }],
+});
+
+const chartReq = new ApexCharts(document.getElementById('chart-req'), {
+  ...baseLineOpts(C_REQ, null),
+  chart: { ...baseLineOpts(C_REQ, null).chart, type: 'bar' },
+  fill:  { type: 'solid', opacity: 0.85 },
+  plotOptions: { bar: { borderRadius: 3, columnWidth: '60%' } },
+  series: [{ name: '요청 건수', data: [] }],
+});
+
+const chartDist = new ApexCharts(document.getElementById('chart-dist'), {
+  chart: { type: 'donut', height: 260, background: '#fff',
+           fontFamily: "'Noto Sans KR', 'Segoe UI', sans-serif" },
+  colors: ['#22C55E', '#EF4444'],
+  labels: ['성공', '실패'],
+  series: [0, 0],
+  legend: { position: 'bottom', fontSize: '14px', fontFamily: "'Noto Sans KR', sans-serif", fontWeight: 600 },
+  dataLabels: { style: { fontSize: '14px', fontWeight: 700 } },
+  plotOptions: { pie: { donut: { size: '65%', labels: { show: true,
+    total: { show: true, label: '총 요청', fontSize: '14px', fontWeight: 700,
+             fontFamily: "'Noto Sans KR', sans-serif", color: DARK } } } } },
+});
+
+const chartResp = new ApexCharts(document.getElementById('chart-resp'), {
+  chart: { type: 'bar', height: 260, toolbar: { show: false }, background: '#fff',
+           fontFamily: "'Noto Sans KR', 'Segoe UI', sans-serif" },
+  colors: [BLUE],
+  series: [{ name: '요청 건수', data: [0, 0, 0, 0] }],
+  xaxis:  { categories: ['0–5s', '5–10s', '10–20s', '20s+'],
+             labels: { style: { fontSize: '13px', fontWeight: 600, fontFamily: "'Noto Sans KR', sans-serif", colors: '#737373' } } },
+  yaxis:  { labels: { style: { fontSize: '11px', colors: '#737373' } } },
+  plotOptions: { bar: { borderRadius: 6, columnWidth: '52%', dataLabels: { position: 'top' } } },
+  dataLabels: { enabled: true, style: { fontSize: '12px', fontWeight: 700, colors: [DARK] }, offsetY: -20 },
+  grid: { borderColor: '#F0F2F5', strokeDashArray: 4 },
+  tooltip: { style: { fontSize: '13px' } },
+});
+
+[chartCpu, chartMem, chartOcr, chartReq, chartDist, chartResp].forEach(c => c.render());
+
+// ── 폴링 & 갱신 ─────────────────────────────────────────────
+function fmt(n, unit='') { return n != null ? `${n}${unit}` : '—'; }
+
+async function refresh() {
+  try {
+    const res  = await fetch(`${BACKEND}/api/metrics`);
+    if (!res.ok) return;
+    const data = await res.json();
+    const cur  = data.current;
+    const ser  = data.series;
+    const dist = data.resp_dist;
+
+    // KPI 업데이트
+    document.getElementById('kpi-cpu').textContent = fmt(cur.cpu_pct, '%');
+    document.getElementById('kpi-mem').textContent = fmt(cur.mem_used_mb, 'MB');
+    document.getElementById('kpi-mem-sub').textContent = `전체 ${cur.mem_total_mb}MB 중 ${cur.mem_pct}% 사용`;
+    document.getElementById('kpi-req').textContent = fmt(cur.total_req, '건');
+    document.getElementById('kpi-req-sub').textContent = `성공 ${cur.success_req} / 실패 ${cur.failed_req}`;
+    document.getElementById('kpi-suc').textContent = fmt(cur.success_pct, '%');
+    document.getElementById('kpi-avg').textContent = `평균 응답 ${cur.avg_resp_s}s`;
+
+    // 시계열 차트
+    chartCpu.updateSeries([{ name: 'CPU %',       data: ser.cpu }], false);
+    chartMem.updateSeries([{ name: '사용 MB',      data: ser.mem }], false);
+    chartOcr.updateSeries([{ name: 'OCR 컨테이너', data: ser.ocr }], false);
+    chartReq.updateSeries([{ name: '요청 건수',    data: ser.req }], false);
+
+    // 도넛 (결과 분포)
+    const s = cur.success_req, f = cur.failed_req;
+    if (s + f > 0) chartDist.updateSeries([s, f]);
+
+    // 응답시간 분포
+    if (dist) {
+      chartResp.updateSeries([{
+        name: '요청 건수',
+        data: [dist['0-5s'], dist['5-10s'], dist['10-20s'], dist['20s+']],
+      }]);
+    }
+
+    // 갱신 시각
+    document.getElementById('refresh-ts').textContent =
+      new Date().toLocaleTimeString('ko-KR');
+
+  } catch (e) {
+    document.getElementById('refresh-ts').textContent = '연결 오류';
+  }
+}
+
+refresh();
+setInterval(refresh, POLL_MS);
+</script>
+</body>
+</html>

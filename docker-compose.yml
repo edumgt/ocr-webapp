@@ -1,15 +1,17 @@
 version: "3.9"
 
 services:
-  ocr-service:
+  # ── OCR 엔진 ──────────────────────────────────────────────────────────────
+  # 상시 실행 X. 이미지만 빌드해두고, 요청마다 backend가 docker run --rm으로 기동·소멸.
+  # 빌드: docker-compose build ocr-engine
+  ocr-engine:
     build:
       context: ./ocr-service
-    container_name: ocr-service
-    restart: unless-stopped
-    entrypoint: []
-    expose:
-      - "8001"
+    image: ocr-engine:latest
+    profiles:
+      - build
 
+  # ── Backend ───────────────────────────────────────────────────────────────
   backend:
     build:
       context: ./backend
@@ -17,9 +19,15 @@ services:
     restart: unless-stopped
     ports:
       - "8000:8000"
-    depends_on:
-      - ocr-service
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock   # Docker 데몬 접근
+      - ocr-inbox:/ocr-inbox                         # OCR 컨테이너와 파일 공유
+    environment:
+      - OCR_IMAGE=ocr-engine:latest
+      - OCR_VOLUME=ocr-inbox
+      - OCR_INBOX=/ocr-inbox
 
+  # ── Frontend ──────────────────────────────────────────────────────────────
   frontend:
     build:
       context: ./frontend
@@ -30,6 +38,7 @@ services:
     depends_on:
       - backend
 
+  # ── 기타 서비스 ───────────────────────────────────────────────────────────
   docker-sample:
     build:
       context: ./docker-sample
@@ -45,3 +54,7 @@ services:
     restart: unless-stopped
     ports:
       - "8002:8002"
+
+volumes:
+  ocr-inbox:
+    name: ocr-inbox   # 프로젝트 prefix 없이 고정 이름 사용

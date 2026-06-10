@@ -1,90 +1,145 @@
-const form = document.getElementById('ocr-form');
-const backendUrlInput = document.getElementById('backend-url-input');
-const fileInput = document.getElementById('file-input');
-const langInput = document.getElementById('lang-input');
-const fileMetaEl = document.getElementById('file-meta');
-const copyButton = document.getElementById('copy-btn');
-const resultEl = document.getElementById('result');
+// ── 엘리먼트 참조 ─────────────────────────────────────────────
+const fileInput    = document.getElementById('file-input');
+const dropZone     = document.getElementById('drop-zone');
+const fileBadge    = document.getElementById('file-badge');
+const fileNameEl   = document.getElementById('file-name');
+const fileSizeEl   = document.getElementById('file-size');
+const ocrBtn       = document.getElementById('ocr-btn');
+const btnText      = document.getElementById('btn-text');
+const btnSpinner   = document.getElementById('btn-spinner');
+const copyBtn      = document.getElementById('copy-btn');
+const resultEl     = document.getElementById('result');
+const resultMeta   = document.getElementById('result-meta');
+const langDisplay  = document.getElementById('lang-display');
+const overlay      = document.getElementById('overlay');
 
-function normalizeBackendUrl(rawValue) {
-  const value = (rawValue || '').trim();
-  if (!value) {
-    return 'http://localhost:8000';
-  }
-  return value.replace(/\/+$/, '');
+// 오프캔버스
+const ocSettings   = document.getElementById('oc-settings');
+const ocHelp       = document.getElementById('oc-help');
+const backendInput = document.getElementById('backend-url-input');
+const langGroup    = document.getElementById('lang-group');
+const langBtns     = langGroup.querySelectorAll('.lang-btn');
+
+// ── 상태 ─────────────────────────────────────────────────────
+let currentLang = 'kor+eng';
+let currentFile = null;
+
+const LANG_LABELS = { 'kor+eng': '한국어 + 영어', kor: '한국어만', eng: '영어만' };
+
+// ── 오프캔버스 헬퍼 ──────────────────────────────────────────
+let activeOc = null;
+
+function openOc(el) {
+  if (activeOc && activeOc !== el) closeOc(activeOc);
+  el.classList.add('open');
+  overlay.classList.add('open');
+  activeOc = el;
+  el.querySelector('.oc-close')?.focus();
 }
 
-function formatFileSize(bytes) {
-  if (bytes >= 1024 * 1024) {
-    return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
-  }
-  return `${(bytes / 1024).toFixed(1)}KB`;
+function closeOc(el) {
+  el?.classList.remove('open');
+  overlay.classList.remove('open');
+  activeOc = null;
 }
 
-function setPreview(file) {
-  if (!file) {
-    fileMetaEl.textContent = '선택된 파일이 없습니다.';
-    return;
-  }
+document.getElementById('btn-settings').addEventListener('click', () => openOc(ocSettings));
+document.getElementById('btn-help').addEventListener('click',     () => openOc(ocHelp));
+overlay.addEventListener('click', () => closeOc(activeOc));
+document.querySelectorAll('.oc-close').forEach((btn) => {
+  btn.addEventListener('click', () => closeOc(activeOc));
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeOc(activeOc); });
 
-  fileMetaEl.textContent = `파일명: ${file.name} / 크기: ${formatFileSize(file.size)} / 타입: ${file.type || 'unknown'}`;
-}
-
-fileInput.addEventListener('change', () => {
-  setPreview(fileInput.files?.[0]);
+// 언어 선택
+langBtns.forEach((btn) => {
+  btn.addEventListener('click', () => {
+    langBtns.forEach((b) => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentLang = btn.dataset.lang;
+  });
 });
 
-form.addEventListener('submit', async (event) => {
-  event.preventDefault();
-  const file = fileInput.files?.[0];
-  const backendUrl = normalizeBackendUrl(backendUrlInput.value);
-  copyButton.disabled = true;
+// 설정 저장
+document.getElementById('oc-save').addEventListener('click', () => {
+  langDisplay.textContent = LANG_LABELS[currentLang] ?? currentLang;
+  closeOc(activeOc);
+});
 
-  if (!file) {
-    resultEl.textContent = '파일을 선택해 주세요.';
-    return;
-  }
+// ── 파일 업로드 ──────────────────────────────────────────────
+function formatSize(bytes) {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / 1024).toFixed(1)} KB`;
+}
 
-  const formData = new FormData();
-  formData.append('file', file);
-  resultEl.textContent = 'OCR 처리 중...';
+function applyFile(file) {
+  if (!file) return;
+  currentFile          = file;
+  fileNameEl.textContent = file.name;
+  fileSizeEl.textContent = formatSize(file.size);
+  fileBadge.classList.remove('hidden');
+  ocrBtn.disabled = false;
+}
+
+dropZone.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', () => applyFile(fileInput.files?.[0]));
+
+dropZone.addEventListener('dragover',  (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', ()  => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  const f = e.dataTransfer.files?.[0];
+  if (f?.type.startsWith('image/')) applyFile(f);
+});
+
+// ── OCR 실행 ─────────────────────────────────────────────────
+ocrBtn.addEventListener('click', async () => {
+  if (!currentFile) return;
+  const backendUrl = (backendInput.value || 'http://localhost:8000').replace(/\/+$/, '');
+
+  ocrBtn.disabled = true;
+  btnText.textContent = '처리 중...';
+  btnSpinner.classList.remove('hidden');
+  copyBtn.disabled = true;
+  resultEl.textContent = 'OCR 처리 중입니다. 잠시 기다려 주세요.';
+  resultMeta.classList.add('hidden');
 
   try {
-    const res = await fetch(`${backendUrl}/api/ocr?lang=${encodeURIComponent(langInput.value || 'kor+eng')}`, {
-      method: 'POST',
-      body: formData,
-    });
+    const fd = new FormData();
+    fd.append('file', currentFile);
+    const res = await fetch(
+      `${backendUrl}/api/ocr?lang=${encodeURIComponent(currentLang)}`,
+      { method: 'POST', body: fd },
+    );
+    const data = await res.json().catch(() => { throw new Error(`파싱 실패 (status ${res.status})`); });
+    if (!res.ok) throw new Error(data.detail || '요청 실패');
 
-    const payload = await res.json().catch(() => {
-      throw new Error(`응답 형식(JSON) 파싱에 실패했습니다. (status: ${res.status})`);
-    });
-
-    if (!res.ok) {
-      throw new Error(payload.detail || '요청 실패');
-    }
-
-    const lines = [
-      payload.text || '(텍스트가 비어 있습니다.)',
-      '',
-      `filename: ${payload.filename || file.name}`,
-      `lang: ${payload.lang || langInput.value || 'kor+eng'}`,
-      `size_bytes: ${payload.size_bytes ?? file.size}`,
-    ];
-    resultEl.textContent = lines.join('\n');
-    copyButton.disabled = false;
-  } catch (error) {
-    resultEl.textContent = `오류: ${error.message}`;
+    resultEl.textContent = data.text?.trim() || '(인식된 텍스트가 없습니다.)';
+    copyBtn.disabled = false;
+    resultMeta.innerHTML = `
+      <span>파일명: <strong>${data.filename ?? currentFile.name}</strong></span>
+      <span>언어: <strong>${data.lang ?? currentLang}</strong></span>
+      <span>크기: <strong>${formatSize(data.size_bytes ?? currentFile.size)}</strong></span>`;
+    resultMeta.classList.remove('hidden');
+  } catch (err) {
+    resultEl.textContent = `오류: ${err.message}`;
+    resultMeta.classList.add('hidden');
+  } finally {
+    ocrBtn.disabled = false;
+    btnText.textContent = 'OCR 실행';
+    btnSpinner.classList.add('hidden');
   }
 });
 
-copyButton.addEventListener('click', async () => {
+// ── 복사 ─────────────────────────────────────────────────────
+copyBtn.addEventListener('click', async () => {
   try {
     await navigator.clipboard.writeText(resultEl.textContent || '');
-    copyButton.textContent = '복사 완료';
-    setTimeout(() => {
-      copyButton.textContent = '결과 복사';
-    }, 1200);
-  } catch (error) {
-    resultEl.textContent = `오류: 복사 실패 (${error.message})`;
+    const prev = copyBtn.innerHTML;
+    copyBtn.textContent = '복사 완료!';
+    setTimeout(() => { copyBtn.innerHTML = prev; }, 1400);
+  } catch (err) {
+    alert(`복사 실패: ${err.message}`);
   }
 });

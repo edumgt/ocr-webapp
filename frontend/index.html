@@ -1,42 +1,184 @@
 <!doctype html>
 <html lang="ko">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>OCR Web App</title>
-    <link rel="stylesheet" href="./styles.css" />
-  </head>
-  <body>
-    <main class="container">
-      <h1>OCR Web App</h1>
-      <p>이미지를 업로드해 한글/영문 OCR 텍스트를 추출합니다.</p>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OCR 텍스트 추출기</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+</head>
+<body>
 
-      <form id="ocr-form">
-        <label>Backend URL
-          <input id="backend-url-input" type="url" value="http://localhost:8000" required />
-        </label>
+  <!-- ── 오버레이 ── -->
+  <div id="overlay" class="overlay"></div>
 
-        <label>이미지 파일
-          <input id="file-input" type="file" accept="image/*" required />
-        </label>
-        <p id="file-meta" class="meta">선택된 파일이 없습니다.</p>
-
-        <label>언어 (Tesseract)
-          <input id="lang-input" type="text" value="kor+eng" />
-        </label>
-
-        <div class="actions">
-          <button type="submit">OCR 실행</button>
-          <button id="copy-btn" type="button" class="secondary" disabled>결과 복사</button>
+  <!-- ── 설정 오프캔버스 (우측) ── -->
+  <aside id="oc-settings" class="offcanvas" aria-label="설정">
+    <div class="oc-header">
+      <span class="oc-title">설정</span>
+      <button class="oc-close" data-close="oc-settings"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="oc-body">
+      <div class="oc-section">
+        <label class="oc-label" for="backend-url-input">Backend URL</label>
+        <input id="backend-url-input" class="oc-input" type="url"
+               value="http://localhost:8000" autocomplete="off" />
+        <p class="oc-hint">OCR API 서버 주소를 입력하세요.</p>
+      </div>
+      <div class="oc-section">
+        <span class="oc-label">인식 언어</span>
+        <div class="lang-group" id="lang-group">
+          <button class="lang-btn active" data-lang="kor+eng">한국어 + 영어</button>
+          <button class="lang-btn" data-lang="kor">한국어만</button>
+          <button class="lang-btn" data-lang="eng">영어만</button>
         </div>
-      </form>
+      </div>
+    </div>
+    <div class="oc-footer">
+      <button id="oc-save" class="btn-primary full-width">저장 완료</button>
+    </div>
+  </aside>
 
-      <section>
-        <h2>결과</h2>
-        <pre id="result">아직 결과가 없습니다.</pre>
+  <!-- ── 사용법 오프캔버스 (우측) ── -->
+  <aside id="oc-help" class="offcanvas" aria-label="사용법 안내">
+    <div class="oc-header">
+      <span class="oc-title">사용법 안내</span>
+      <button class="oc-close" data-close="oc-help"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="oc-body">
+      <div class="oc-section">
+        <span class="oc-label">이용 순서</span>
+        <div class="help-step">
+          <div class="step-num"><i class="fa-solid fa-cloud-arrow-up"></i></div>
+          <div class="step-text">
+            <strong>이미지 업로드</strong>
+            <p>드래그 앤 드롭 또는 파일 선택으로 이미지를 올립니다. JPG·PNG·WEBP 등 최대 10MB.</p>
+          </div>
+        </div>
+        <div class="help-step">
+          <div class="step-num"><i class="fa-solid fa-language"></i></div>
+          <div class="step-text">
+            <strong>언어 선택</strong>
+            <p>설정 패널에서 한국어+영어, 한국어만, 영어만 중 선택합니다.</p>
+          </div>
+        </div>
+        <div class="help-step">
+          <div class="step-num"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
+          <div class="step-text">
+            <strong>OCR 실행</strong>
+            <p>파란색 [OCR 실행] 버튼을 클릭합니다. 서버에서 텍스트를 인식합니다.</p>
+          </div>
+        </div>
+        <div class="help-step">
+          <div class="step-num"><i class="fa-regular fa-copy"></i></div>
+          <div class="step-text">
+            <strong>결과 복사</strong>
+            <p>추출된 텍스트를 확인하고 [복사] 버튼으로 클립보드에 저장합니다.</p>
+          </div>
+        </div>
+      </div>
+
+      <hr class="oc-divider" />
+
+      <div class="oc-section">
+        <span class="oc-label">시스템 정보</span>
+        <div class="oc-tech-item"><strong>OCR 엔진</strong><span>Tesseract 5 (한국어·영어)</span></div>
+        <div class="oc-tech-item"><strong>컨테이너</strong><span>요청마다 on-demand 실행 후 자동 소멸</span></div>
+        <div class="oc-tech-item"><strong>파일 크기</strong><span>최대 10MB</span></div>
+        <div class="oc-tech-item"><strong>지원 형식</strong><span>JPG, PNG, WEBP, BMP, TIFF</span></div>
+        <div class="oc-tech-item"><strong>처리 시간</strong><span>이미지당 약 2~15초</span></div>
+      </div>
+
+      <hr class="oc-divider" />
+
+      <div class="oc-section">
+        <span class="oc-label">관리자 대시보드</span>
+        <p class="oc-hint">CPU·메모리 사용량, 동시 접속 추이 등 실시간 시스템 현황을 확인할 수 있습니다.</p>
+        <a href="./admin.html" class="btn-primary" style="margin-top:6px;">관리자 화면으로 이동 →</a>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ── GNB ── -->
+  <header class="site-header">
+    <div class="header-inner">
+      <a href="./index.html" class="brand">
+        <span class="brand-box">OCR</span>
+        <span class="brand-name">텍스트 추출기</span>
+      </a>
+      <nav class="gnb-tabs">
+        <a href="./index.html" class="gnb-tab active">사용자</a>
+        <a href="./admin.html" class="gnb-tab">관리자</a>
+      </nav>
+      <div class="gnb-actions">
+        <button class="gnb-btn" id="btn-help">
+          <i class="fa-regular fa-circle-question"></i>
+          사용법
+        </button>
+        <button class="gnb-btn" id="btn-settings">
+          <i class="fa-solid fa-gear"></i>
+          설정
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ── 본문 ── -->
+  <main class="main">
+    <div class="page-inner">
+      <section class="hero">
+        <h1 class="hero-title">이미지에서 텍스트를 추출하세요.</h1>
+        <p class="hero-sub">한국어·영어 이미지를 업로드하면 Tesseract OCR이 텍스트를 인식합니다.</p>
       </section>
-    </main>
 
-    <script src="./app.js"></script>
-  </body>
+      <section class="card upload-card" id="drop-zone">
+        <input id="file-input" type="file" accept="image/*" hidden />
+        <div class="drop-icon">
+          <i class="fa-solid fa-cloud-arrow-up" style="font-size:3rem;color:#0078D4;"></i>
+        </div>
+        <p class="drop-main">이미지를 여기에 드래그하거나 <span class="link-text">파일 선택</span></p>
+        <p class="drop-sub">JPG, PNG, WEBP, BMP 등 이미지 파일 · 최대 10MB</p>
+        <div id="file-badge" class="file-badge hidden">
+          <span id="file-name" class="file-badge-name"></span>
+          <span id="file-size" class="file-badge-size"></span>
+        </div>
+      </section>
+
+      <div class="action-bar">
+        <div class="lang-status">
+          <span class="lang-label">인식 언어</span>
+          <span id="lang-display" class="lang-chip">한국어 + 영어</span>
+        </div>
+        <button id="ocr-btn" class="btn-primary" disabled>
+          <span id="btn-text">OCR 실행</span>
+          <span id="btn-spinner" class="spinner hidden"></span>
+        </button>
+      </div>
+
+      <section class="card result-card">
+        <div class="result-header">
+          <span class="result-title">추출 결과</span>
+          <button id="copy-btn" class="btn-ghost" disabled>
+            <i class="fa-regular fa-copy"></i>
+            복사
+          </button>
+        </div>
+        <pre id="result" class="result-body">아직 결과가 없습니다.</pre>
+        <div id="result-meta" class="result-meta hidden"></div>
+      </section>
+    </div>
+  </main>
+
+  <!-- ── 푸터 ── -->
+  <footer class="site-footer">
+    <strong>(주)에듀엠지티</strong> &nbsp;|&nbsp;
+    <a href="https://www.edumgt.co.kr" target="_blank" rel="noopener">www.edumgt.co.kr</a>
+    &nbsp;|&nbsp; OCR 텍스트 추출 시스템 &nbsp;|&nbsp; <i class="fa-regular fa-copyright"></i> 2026 에듀엠지티. All rights reserved.
+  </footer>
+
+  <script src="./app.js"></script>
+</body>
 </html>
