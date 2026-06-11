@@ -13,6 +13,17 @@ const resultMeta   = document.getElementById('result-meta');
 const langDisplay  = document.getElementById('lang-display');
 const overlay      = document.getElementById('overlay');
 
+// AI 보완
+const aiBtn           = document.getElementById('ai-btn');
+const aiBtnText       = document.getElementById('ai-btn-text');
+const aiBtnSpinner    = document.getElementById('ai-btn-spinner');
+const originalSection = document.getElementById('original-section');
+const originalResult  = document.getElementById('original-result');
+const aiProviderGroup = document.getElementById('ai-provider-group');
+const aiProviderBtns  = aiProviderGroup.querySelectorAll('.lang-btn');
+const ollamaSettings  = document.getElementById('ollama-settings');
+const openaiSettings  = document.getElementById('openai-settings');
+
 // 오프캔버스
 const ocSettings   = document.getElementById('oc-settings');
 const ocHelp       = document.getElementById('oc-help');
@@ -23,6 +34,8 @@ const langBtns     = langGroup.querySelectorAll('.lang-btn');
 // ── 상태 ─────────────────────────────────────────────────────
 let currentLang = 'kor+eng';
 let currentFile = null;
+let currentAIProvider = 'ollama';
+let lastOcrText = null;
 
 const LANG_LABELS = { 'kor+eng': '한국어 + 영어', kor: '한국어만', eng: '영어만' };
 
@@ -64,6 +77,17 @@ langBtns.forEach((btn) => {
 document.getElementById('oc-save').addEventListener('click', () => {
   langDisplay.textContent = LANG_LABELS[currentLang] ?? currentLang;
   closeOc(activeOc);
+});
+
+// AI 제공자 전환
+aiProviderBtns.forEach((btn) => {
+  btn.addEventListener('click', () => {
+    aiProviderBtns.forEach((b) => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentAIProvider = btn.dataset.provider;
+    ollamaSettings.classList.toggle('hidden', currentAIProvider !== 'ollama');
+    openaiSettings.classList.toggle('hidden', currentAIProvider !== 'openai');
+  });
 });
 
 // ── 파일 업로드 ──────────────────────────────────────────────
@@ -115,8 +139,12 @@ ocrBtn.addEventListener('click', async () => {
     const data = await res.json().catch(() => { throw new Error(`파싱 실패 (status ${res.status})`); });
     if (!res.ok) throw new Error(data.detail || '요청 실패');
 
-    resultEl.textContent = data.text?.trim() || '(인식된 텍스트가 없습니다.)';
-    copyBtn.disabled = false;
+    const ocrText = data.text?.trim() || '';
+    resultEl.textContent = ocrText || '(인식된 텍스트가 없습니다.)';
+    lastOcrText = ocrText || null;
+    copyBtn.disabled = !ocrText;
+    aiBtn.disabled = !ocrText;
+    originalSection.classList.add('hidden');
     resultMeta.innerHTML = `
       <span>파일명: <strong>${data.filename ?? currentFile.name}</strong></span>
       <span>언어: <strong>${data.lang ?? currentLang}</strong></span>
@@ -141,5 +169,53 @@ copyBtn.addEventListener('click', async () => {
     setTimeout(() => { copyBtn.innerHTML = prev; }, 1400);
   } catch (err) {
     alert(`복사 실패: ${err.message}`);
+  }
+});
+
+// ── AI 보완 ──────────────────────────────────────────────────
+aiBtn.addEventListener('click', async () => {
+  if (!lastOcrText) return;
+  const backendUrl = (backendInput.value || 'http://localhost:8000').replace(/\/+$/, '');
+
+  aiBtn.disabled = true;
+  aiBtnText.textContent = '처리 중...';
+  aiBtnSpinner.classList.remove('hidden');
+
+  const body = { text: lastOcrText, lang: currentLang, provider: currentAIProvider };
+  if (currentAIProvider === 'ollama') {
+    const url   = document.getElementById('ollama-url-input').value;
+    const model = document.getElementById('ollama-model-input').value;
+    if (url)   body.ollama_url   = url;
+    if (model) body.ollama_model = model;
+  } else {
+    const key     = document.getElementById('openai-key-input').value;
+    const model   = document.getElementById('openai-model-input').value;
+    const baseUrl = document.getElementById('openai-url-input').value;
+    if (key)     body.openai_api_key  = key;
+    if (model)   body.openai_model    = model;
+    if (baseUrl) body.openai_base_url = baseUrl;
+  }
+
+  try {
+    const res = await fetch(`${backendUrl}/api/ai/enhance`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => { throw new Error(`파싱 실패 (status ${res.status})`); });
+    if (!res.ok) throw new Error(data.detail || '요청 실패');
+
+    originalResult.textContent = lastOcrText;
+    originalSection.classList.remove('hidden');
+    resultEl.textContent = data.enhanced_text?.trim() || '(AI 보완 결과 없음)';
+
+    const providerLabel = currentAIProvider === 'ollama' ? 'Ollama' : 'OpenAI';
+    resultMeta.innerHTML += `<span class="ai-badge"><i class="fa-solid fa-wand-magic-sparkles"></i> ${providerLabel} 보완됨</span>`;
+  } catch (err) {
+    resultEl.textContent = `AI 오류: ${err.message}`;
+  } finally {
+    aiBtn.disabled = false;
+    aiBtnText.textContent = 'AI 보완';
+    aiBtnSpinner.classList.add('hidden');
   }
 });

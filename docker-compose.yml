@@ -26,6 +26,13 @@ services:
       - OCR_IMAGE=ocr-engine:latest
       - OCR_VOLUME=ocr-inbox
       - OCR_INBOX=/ocr-inbox
+      # AI 보완 설정 (원하는 제공자로 변경)
+      - AI_PROVIDER=ollama            # ollama | openai
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - OLLAMA_MODEL=llama3.2
+      - OPENAI_API_KEY=               # OpenAI 사용 시 입력
+      - OPENAI_MODEL=gpt-4o-mini
+      - OPENAI_BASE_URL=https://api.openai.com/v1
 
   # ── Frontend ──────────────────────────────────────────────────────────────
   frontend:

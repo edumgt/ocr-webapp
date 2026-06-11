@@ -36,6 +36,37 @@
           <button class="lang-btn" data-lang="eng">영어만</button>
         </div>
       </div>
+
+      <hr class="oc-divider" />
+
+      <div class="oc-section">
+        <span class="oc-label">AI 보완</span>
+        <div class="lang-group" id="ai-provider-group">
+          <button class="lang-btn active" data-provider="ollama">Ollama (로컬)</button>
+          <button class="lang-btn" data-provider="openai">OpenAI</button>
+        </div>
+
+        <div id="ollama-settings">
+          <label class="oc-sub-label" for="ollama-url-input">Ollama URL</label>
+          <input id="ollama-url-input" class="oc-input" type="url"
+                 value="http://localhost:11434" autocomplete="off" />
+          <label class="oc-sub-label" for="ollama-model-input">모델</label>
+          <input id="ollama-model-input" class="oc-input" type="text"
+                 value="llama3.2" autocomplete="off" />
+        </div>
+
+        <div id="openai-settings" class="hidden">
+          <label class="oc-sub-label" for="openai-key-input">API Key</label>
+          <input id="openai-key-input" class="oc-input" type="password"
+                 placeholder="sk-..." autocomplete="off" />
+          <label class="oc-sub-label" for="openai-model-input">모델</label>
+          <input id="openai-model-input" class="oc-input" type="text"
+                 value="gpt-4o-mini" autocomplete="off" />
+          <label class="oc-sub-label" for="openai-url-input">Base URL</label>
+          <input id="openai-url-input" class="oc-input" type="url"
+                 value="https://api.openai.com/v1" autocomplete="off" />
+        </div>
+      </div>
     </div>
     <div class="oc-footer">
       <button id="oc-save" class="btn-primary full-width">저장 완료</button>
@@ -161,12 +192,26 @@
       <section class="card result-card">
         <div class="result-header">
           <span class="result-title">추출 결과</span>
-          <button id="copy-btn" class="btn-ghost" disabled>
-            <i class="fa-regular fa-copy"></i>
-            복사
-          </button>
+          <div class="result-actions">
+            <button id="ai-btn" class="btn-ai" disabled>
+              <i class="fa-solid fa-wand-magic-sparkles"></i>
+              <span id="ai-btn-text">AI 보완</span>
+              <span id="ai-btn-spinner" class="spinner-sm hidden"></span>
+            </button>
+            <button id="copy-btn" class="btn-ghost" disabled>
+              <i class="fa-regular fa-copy"></i>
+              복사
+            </button>
+          </div>
         </div>
         <pre id="result" class="result-body">아직 결과가 없습니다.</pre>
+        <details id="original-section" class="original-section hidden">
+          <summary class="original-summary">
+            <i class="fa-solid fa-chevron-right"></i>
+            원본 OCR 결과 보기
+          </summary>
+          <pre id="original-result" class="original-body"></pre>
+        </details>
         <div id="result-meta" class="result-meta hidden"></div>
       </section>
     </div>

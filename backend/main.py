@@ -11,9 +11,13 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import docker as docker_sdk
+import httpx
 import psutil
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+
+import ai_enhancer
 
 # ── 설정 ─────────────────────────────────────────────────────────────────────
 OCR_IMAGE   = os.getenv("OCR_IMAGE",  "ocr-engine:latest")
@@ -218,3 +222,72 @@ def _resp_time_buckets(times: list[float]) -> dict:
         elif t < 20:   buckets["10-20s"] += 1
         else:          buckets["20s+"]   += 1
     return buckets
+
+
+# ── AI 보완 ───────────────────────────────────────────────────────────────────
+class EnhanceRequest(BaseModel):
+    text: str
+    lang: str = "kor+eng"
+    provider: str | None = None          # "ollama" | "openai", 미지정 시 환경변수 사용
+    ollama_url: str | None = None
+    ollama_model: str | None = None
+    openai_api_key: str | None = None    # 클라이언트가 직접 전달 가능
+    openai_model: str | None = None
+    openai_base_url: str | None = None
+
+
+@app.get("/api/ai/config")
+def get_ai_config() -> dict:
+    """현재 AI 보완 설정 정보 (API 키 노출 없이 반환)."""
+    return {
+        "provider":        ai_enhancer.DEFAULT_PROVIDER,
+        "ollama_url":      ai_enhancer.DEFAULT_OLLAMA_URL,
+        "ollama_model":    ai_enhancer.DEFAULT_OLLAMA_MODEL,
+        "openai_model":    ai_enhancer.DEFAULT_OPENAI_MODEL,
+        "openai_base_url": ai_enhancer.DEFAULT_OPENAI_URL,
+        "openai_key_set":  bool(ai_enhancer.DEFAULT_OPENAI_KEY),
+    }
+
+
+@app.post("/api/ai/enhance")
+async def enhance_ocr(req: EnhanceRequest) -> dict[str, str]:
+    """OCR 결과 텍스트를 AI로 보완."""
+    if not req.text.strip():
+        raise HTTPException(status_code=400, detail="text가 비어 있습니다.")
+
+    provider = (req.provider or ai_enhancer.DEFAULT_PROVIDER).lower()
+
+    try:
+        if provider == "ollama":
+            enhanced = await ai_enhancer.enhance_ollama(
+                text=req.text,
+                lang=req.lang,
+                base_url=req.ollama_url or ai_enhancer.DEFAULT_OLLAMA_URL,
+                model=req.ollama_model or ai_enhancer.DEFAULT_OLLAMA_MODEL,
+            )
+        elif provider == "openai":
+            api_key = req.openai_api_key or ai_enhancer.DEFAULT_OPENAI_KEY
+            if not api_key:
+                raise HTTPException(status_code=400, detail="OpenAI API 키가 설정되지 않았습니다.")
+            enhanced = await ai_enhancer.enhance_openai(
+                text=req.text,
+                lang=req.lang,
+                api_key=api_key,
+                model=req.openai_model or ai_enhancer.DEFAULT_OPENAI_MODEL,
+                base_url=req.openai_base_url or ai_enhancer.DEFAULT_OPENAI_URL,
+            )
+        else:
+            raise HTTPException(status_code=400, detail=f"지원하지 않는 제공자: {provider}")
+    except HTTPException:
+        raise
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(status_code=502, detail=f"AI 서비스 오류: {exc.response.text[:300]}")
+    except httpx.ConnectError:
+        raise HTTPException(status_code=502, detail=f"{provider} 서버에 연결할 수 없습니다.")
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="AI 응답 시간 초과.")
+    except Exception as exc:
+        logger.exception("AI enhance 실패")
+        raise HTTPException(status_code=500, detail=f"AI 처리 오류: {exc}")
+
+    return {"enhanced_text": enhanced, "provider": provider}

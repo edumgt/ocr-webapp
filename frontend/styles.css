@@ -534,6 +534,107 @@ body {
 .site-footer a:hover { color: var(--grad-b); }
 .site-footer strong { color: #C8C8E8; font-weight: 600; }
 
+/* ── 전역 유틸리티 ──────────────────────────────────────────── */
+.hidden { display: none !important; }
+
+/* ── AI 버튼 ─────────────────────────────────────────────────── */
+.btn-ai {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: linear-gradient(135deg, var(--grad-a), var(--grad-b));
+  color: #FFF;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 7px 16px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity var(--transition), box-shadow var(--transition), transform var(--transition);
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(123,97,255,.30);
+}
+.btn-ai:hover:not(:disabled) {
+  opacity: .88;
+  box-shadow: 0 4px 16px rgba(123,97,255,.40);
+  transform: translateY(-1px);
+}
+.btn-ai:active:not(:disabled) { transform: translateY(0); }
+.btn-ai:disabled { opacity: .35; cursor: not-allowed; }
+
+.result-actions { display: flex; align-items: center; gap: 8px; }
+
+.spinner-sm {
+  width: 14px; height: 14px;
+  border: 2px solid rgba(255,255,255,.35);
+  border-top-color: #FFF;
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+}
+.spinner-sm.hidden { display: none !important; }
+
+/* ── AI 원본 접기/펼치기 ─────────────────────────────────────── */
+.original-section { border-top: 1px solid var(--border); }
+.original-section.hidden { display: none !important; }
+
+.original-summary {
+  padding: 10px 20px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: color var(--transition), background var(--transition);
+}
+.original-summary:hover { color: var(--text); background: var(--surface-2); }
+.original-summary .fa-chevron-right {
+  font-size: 11px;
+  transition: transform var(--transition);
+}
+details[open] .original-summary .fa-chevron-right { transform: rotate(90deg); }
+
+.original-body {
+  padding: 14px 20px;
+  font-family: 'Noto Sans KR', monospace;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--muted);
+  background: var(--surface-2);
+  white-space: pre-wrap;
+  word-break: break-all;
+  border-top: 1px dashed var(--border);
+}
+
+/* ── AI 배지 & 설정 서브라벨 ────────────────────────────────── */
+.ai-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: linear-gradient(135deg, rgba(123,97,255,.10), rgba(33,150,243,.10));
+  color: var(--grad-a);
+  border: 1px solid rgba(123,97,255,.22);
+  border-radius: 99px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 10px;
+}
+
+.oc-sub-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  margin-top: 8px;
+  margin-bottom: 2px;
+}
+
 /* ── 반응형 ─────────────────────────────────────────────────── */
 @media (max-width: 768px) {
   .kpi-grid   { grid-template-columns: repeat(2,1fr); }
