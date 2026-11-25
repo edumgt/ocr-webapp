@@ -167,14 +167,22 @@
 
       <section class="card upload-card" id="drop-zone">
         <input id="file-input" type="file" accept="image/*" hidden />
-        <div class="drop-icon">
-          <i class="fa-solid fa-cloud-arrow-up" style="font-size:3rem;color:#0078D4;"></i>
+        <div id="drop-placeholder">
+          <div class="drop-icon">
+            <i class="fa-solid fa-cloud-arrow-up" style="font-size:3rem;color:#0078D4;"></i>
+          </div>
+          <p class="drop-main">이미지를 여기에 드래그하거나 <span class="link-text">파일 선택</span> (Ctrl+V 붙여넣기 가능)</p>
+          <p class="drop-sub">JPG, PNG, WEBP, BMP, TIFF, GIF · 최대 10MB</p>
         </div>
-        <p class="drop-main">이미지를 여기에 드래그하거나 <span class="link-text">파일 선택</span></p>
-        <p class="drop-sub">JPG, PNG, WEBP, BMP 등 이미지 파일 · 최대 10MB</p>
-        <div id="file-badge" class="file-badge hidden">
-          <span id="file-name" class="file-badge-name"></span>
-          <span id="file-size" class="file-badge-size"></span>
+        <div id="preview-wrap" class="preview-wrap hidden">
+          <img id="image-preview" class="image-preview" alt="업로드 이미지 미리보기" />
+          <div class="preview-actions">
+            <div id="file-badge" class="file-badge hidden">
+              <span id="file-name" class="file-badge-name"></span>
+              <span id="file-size" class="file-badge-size"></span>
+            </div>
+            <button type="button" id="clear-file-btn" class="btn-ghost btn-sm">다른 이미지 선택</button>
+          </div>
         </div>
       </section>
 
@@ -193,10 +201,26 @@
         <div class="result-header">
           <span class="result-title">추출 결과</span>
           <div class="result-actions">
+            <button id="compare-btn" class="btn-ghost" disabled title="이미지와 결과 나란히 보기">
+              <i class="fa-solid fa-columns"></i>
+              비교
+            </button>
+            <button id="edit-btn" class="btn-ghost" disabled title="결과 직접 편집">
+              <i class="fa-regular fa-pen-to-square"></i>
+              편집
+            </button>
             <button id="ai-btn" class="btn-ai" disabled>
               <i class="fa-solid fa-wand-magic-sparkles"></i>
               <span id="ai-btn-text">AI 보완</span>
               <span id="ai-btn-spinner" class="spinner-sm hidden"></span>
+            </button>
+            <button id="download-txt-btn" class="btn-ghost" disabled title="TXT 다운로드">
+              <i class="fa-solid fa-download"></i>
+              TXT
+            </button>
+            <button id="download-md-btn" class="btn-ghost" disabled title="Markdown 다운로드">
+              <i class="fa-brands fa-markdown"></i>
+              MD
             </button>
             <button id="copy-btn" class="btn-ghost" disabled>
               <i class="fa-regular fa-copy"></i>
@@ -204,7 +228,15 @@
             </button>
           </div>
         </div>
-        <pre id="result" class="result-body">아직 결과가 없습니다.</pre>
+        <div id="result-workspace" class="result-workspace">
+          <div id="compare-pane" class="compare-pane hidden">
+            <img id="compare-image" class="compare-image" alt="비교용 원본 이미지" />
+          </div>
+          <div class="result-content-pane">
+            <pre id="result" class="result-body">아직 결과가 없습니다.</pre>
+            <textarea id="result-editor" class="result-editor hidden" spellcheck="false" aria-label="추출 결과 편집기"></textarea>
+          </div>
+        </div>
         <details id="original-section" class="original-section hidden">
           <summary class="original-summary">
             <i class="fa-solid fa-chevron-right"></i>
@@ -214,8 +246,18 @@
         </details>
         <div id="result-meta" class="result-meta hidden"></div>
       </section>
+
+      <section id="history-card" class="card history-card hidden">
+        <div class="result-header">
+          <span class="result-title">최근 OCR 기록</span>
+          <button id="clear-history-btn" class="btn-ghost btn-sm">전체 삭제</button>
+        </div>
+        <ul id="history-list" class="history-list"></ul>
+      </section>
     </div>
   </main>
+
+  <div id="toast-container" class="toast-container" aria-live="polite"></div>
 
   <!-- ── 푸터 ── -->
   <footer class="site-footer">

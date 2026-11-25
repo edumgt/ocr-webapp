@@ -23,12 +23,16 @@ import ai_enhancer
 OCR_IMAGE   = os.getenv("OCR_IMAGE",  "ocr-engine:latest")
 OCR_VOLUME  = os.getenv("OCR_VOLUME", "ocr-inbox")
 OCR_INBOX   = os.getenv("OCR_INBOX",  "/ocr-inbox")
-TIMEOUT_SECONDS          = 60.0
+TIMEOUT_SECONDS          = float(os.getenv("OCR_TIMEOUT_SECONDS", "60.0"))
 MAX_UPLOAD_SIZE_BYTES    = 10 * 1024 * 1024
+MAX_CONCURRENT_OCR       = max(1, int(os.getenv("MAX_CONCURRENT_OCR", "4")))
 ALLOWED_CONTENT_TYPE_PREFIXES = ("image/",)
 SUPPORTED_LANG_CHOICES   = ("kor", "eng", "kor+eng", "eng+kor")
+ALLOWED_IMAGE_SUFFIXES   = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff", ".gif"}
 
 logger = logging.getLogger(__name__)
+_ocr_semaphore: asyncio.Semaphore | None = None
+_docker_client: docker_sdk.DockerClient | None = None
 
 # ── 메트릭 저장소 ─────────────────────────────────────────────────────────────
 _lock           = threading.Lock()
@@ -45,9 +49,34 @@ _resp_times: deque = deque(maxlen=200)  # 응답시간 히스토리 (초)
 _prev_total   = 0
 
 
+def _get_docker_client() -> docker_sdk.DockerClient:
+    """Docker 데몬 클라이언트를 지연 초기화/재사용한다."""
+    global _docker_client
+    if _docker_client is None:
+        _docker_client = docker_sdk.DockerClient(base_url="unix:///var/run/docker.sock")
+    return _docker_client
+
+
+def _detect_image_suffix(content: bytes) -> str | None:
+    """파일 매직 바이트로 실제 이미지 포맷 확장자를 판별한다."""
+    if content.startswith(b"\x89PNG\r\n\x1a\n"):
+        return ".png"
+    if content.startswith(b"\xff\xd8\xff"):
+        return ".jpg"
+    if content.startswith((b"GIF87a", b"GIF89a")):
+        return ".gif"
+    if content.startswith(b"BM"):
+        return ".bmp"
+    if len(content) >= 12 and content[:4] == b"RIFF" and content[8:12] == b"WEBP":
+        return ".webp"
+    if content.startswith((b"II*\x00", b"MM\x00*")):
+        return ".tiff"
+    return None
+
+
 def _count_ocr_containers() -> int:
     try:
-        client = docker_sdk.DockerClient(base_url="unix:///var/run/docker.sock")
+        client = _get_docker_client()
         return len(client.containers.list(filters={"ancestor": OCR_IMAGE}))
     except Exception:
         return 0
@@ -102,7 +131,7 @@ def _ocr_sync(content: bytes, lang: str, suffix: str) -> str:
     container_file = f"/inbox/{fname}"
     host_file.write_bytes(content)
     try:
-        client = docker_sdk.DockerClient(base_url="unix:///var/run/docker.sock")
+        client = _get_docker_client()
         stdout = client.containers.run(
             OCR_IMAGE,
             command=[lang, container_file],
@@ -127,7 +156,7 @@ async def run_ocr(
     file: UploadFile = File(...),
     lang: str = Query("kor+eng"),
 ) -> dict[str, str | int]:
-    global _active_ocr, _total_req, _success_req, _failed_req
+    global _active_ocr, _total_req, _success_req, _failed_req, _ocr_semaphore
 
     content = await file.read()
     if not content:
@@ -135,36 +164,47 @@ async def run_ocr(
     if len(content) > MAX_UPLOAD_SIZE_BYTES:
         raise HTTPException(status_code=413, detail=f"파일은 {MAX_UPLOAD_SIZE_BYTES // (1024*1024)}MB 이하여야 합니다.")
 
+    detected_suffix = _detect_image_suffix(content)
     ct = file.content_type or "application/octet-stream"
-    if not any(ct.startswith(p) for p in ALLOWED_CONTENT_TYPE_PREFIXES):
-        raise HTTPException(status_code=400, detail=f"지원하지 않는 형식: {ct}")
+    if not detected_suffix:
+        if not any(ct.startswith(p) for p in ALLOWED_CONTENT_TYPE_PREFIXES):
+            raise HTTPException(status_code=400, detail=f"지원하지 않는 형식: {ct}")
+        raise HTTPException(status_code=400, detail="유효한 이미지 파일(PNG, JPG, WEBP, BMP, TIFF, GIF)이 아닙니다.")
     if lang not in SUPPORTED_LANG_CHOICES:
         raise HTTPException(status_code=400, detail=f"지원하지 않는 lang: {lang}")
 
-    suffix = Path(file.filename or "upload.png").suffix or ".png"
+    raw_suffix = Path(file.filename or "upload.png").suffix.lower()
+    suffix = raw_suffix if raw_suffix in ALLOWED_IMAGE_SUFFIXES else detected_suffix
     t0 = time.perf_counter()
+
+    if _ocr_semaphore is None:
+        _ocr_semaphore = asyncio.Semaphore(MAX_CONCURRENT_OCR)
 
     with _lock:
         _total_req  += 1
         _active_ocr += 1
 
     try:
-        loop = asyncio.get_event_loop()
-        text = await asyncio.wait_for(
-            loop.run_in_executor(None, _ocr_sync, content, lang, suffix),
-            timeout=TIMEOUT_SECONDS,
-        )
+        async with _ocr_semaphore:
+            loop = asyncio.get_running_loop()
+            text = await asyncio.wait_for(
+                loop.run_in_executor(None, _ocr_sync, content, lang, suffix),
+                timeout=TIMEOUT_SECONDS,
+            )
+        duration_s = time.perf_counter() - t0
         with _lock:
             _success_req += 1
-            _resp_times.append(round(time.perf_counter() - t0, 3))
+            _resp_times.append(round(duration_s, 3))
     except asyncio.TimeoutError:
         with _lock:
             _failed_req += 1
+        logger.warning("OCR 처리 시간 초과 (filename=%s, lang=%s)", file.filename, lang)
         raise HTTPException(status_code=504, detail="OCR 처리 시간 초과.")
     except docker_sdk.errors.ContainerError as exc:
         with _lock:
             _failed_req += 1
         detail = exc.stderr.decode(errors="replace").strip() if exc.stderr else "OCR 실패"
+        logger.warning("OCR 컨테이너 오류: %s", detail)
         raise HTTPException(status_code=400, detail=detail)
     except Exception as exc:
         with _lock:
@@ -176,10 +216,13 @@ async def run_ocr(
             _active_ocr -= 1
 
     return {
-        "text":       text,
-        "lang":       lang,
-        "filename":   file.filename or "upload",
-        "size_bytes": len(content),
+        "text":        text,
+        "lang":        lang,
+        "filename":    file.filename or "upload",
+        "size_bytes":  len(content),
+        "duration_ms": round(duration_s * 1000),
+        "char_count":  len(text),
+        "line_count":  len(text.splitlines()) if text else 0,
     }
 
 
